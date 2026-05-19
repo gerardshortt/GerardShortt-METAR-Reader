@@ -148,10 +148,13 @@ def decode_weather(token):
     pattern = (
         r"^(\+|-|VC)?"
         r"(MI|BC|PR|DR|BL|SH|TS|FZ)?"
-        r"(DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+"
+        r"(DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)*"
         r"$"
     )
     if not re.match(pattern, token):
+        return None
+    # Require at least one known weather code — reject bare intensity prefixes like "+" or "VC"
+    if not re.search(r"MI|BC|PR|DR|BL|SH|TS|FZ|DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS", token):
         return None
 
     intensity_raw = re.match(r"^(\+|-|VC)", token)
@@ -168,8 +171,11 @@ def decode_weather(token):
     )
     phenom_str = " and ".join(WEATHER_PHENOMENA.get(c, c) for c in phenomena_codes)
 
-    if descriptor == "TS" and not phenom_str:
-        parts_wx = [intensity_str, "thunderstorm"] if intensity_raw else ["thunderstorm"]
+    # Map descriptors that can appear without a trailing phenomenon code
+    STANDALONE = {"TS": "thunderstorm", "SH": "showers"}
+
+    if descriptor in STANDALONE and not phenom_str:
+        parts_wx = [intensity_str, STANDALONE[descriptor]] if intensity_raw else [STANDALONE[descriptor]]
     elif desc_str and phenom_str:
         parts_wx = [intensity_str, desc_str, phenom_str] if intensity_raw else [desc_str, phenom_str]
     elif phenom_str:

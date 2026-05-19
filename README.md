@@ -95,6 +95,37 @@ You can look up any airport's ICAO code at [ourairports.com](https://ourairports
 
 ---
 
+## Running the Tests
+
+The test suite uses [pytest](https://pytest.org) and covers 103 cases across two files — no network calls are made (the Aviation Weather API is mocked throughout).
+
+**Install dev dependencies**
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+**Run all tests**
+
+```bash
+pytest tests/
+```
+
+**Run with verbose output**
+
+```bash
+pytest tests/ -v
+```
+
+### Test structure
+
+| File | What it tests |
+|------|---------------|
+| `tests/test_decoder.py` | Pure decoder functions — wind, visibility, weather phenomena, sky conditions, temperature, full METAR strings, and summary generation |
+| `tests/test_routes.py` | Flask routes — input validation, successful responses with mocked METAR data, and API failure handling |
+
+---
+
 ## Data Source
 
 Weather data is fetched in real time from the [Aviation Weather Center API](https://aviationweather.gov/api/data/metar), operated by NOAA. No API key is required.
