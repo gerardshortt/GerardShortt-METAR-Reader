@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>METAR Reader</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0e1a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    .hero {
+      background: linear-gradient(160deg, #0d1b3e 0%, #1a3a6e 50%, #2d6a9f 100%);
+      padding: 3rem 1.5rem 4rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .hero-plane {
+      font-size: 3rem;
+      margin-bottom: 0.75rem;
+      display: block;
+      animation: float 4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-8px); }
+    }
+    .hero h1 { font-size: 2.4rem; font-weight: 700; color: #fff; }
+    .hero p   { margin-top: 0.5rem; color: #93c5fd; font-size: 1.05rem; }
+
+    .search-wrap {
+      display: flex;
+      gap: 0.5rem;
+      max-width: 520px;
+      margin: 2rem auto 0;
+    }
+    #airport-input {
+      flex: 1;
+      padding: 0.85rem 1.2rem;
+      font-size: 1.15rem;
+      font-family: "Courier New", monospace;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #airport-input::placeholder { color: rgba(255,255,255,0.35); text-transform: none; letter-spacing: 0; }
+    #airport-input:focus { border-color: #60a5fa; background: rgba(255,255,255,0.12); }
+
+    #search-btn {
+      padding: 0.85rem 1.6rem;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    #search-btn:hover   { background: #1d4ed8; }
+    #search-btn:active  { transform: scale(0.97); }
+    #search-btn:disabled { background: #4b5563; cursor: not-allowed; }
+
+    .examples {
+      text-align: center;
+      margin-top: 1.25rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+    .examples span {
+      display: inline-block;
+      margin: 0.25rem 0.3rem;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-family: "Courier New", monospace;
+      cursor: pointer;
+      color: #93c5fd;
+      transition: background 0.15s;
+    }
+    .examples span:hover { background: rgba(255,255,255,0.14); }
+
+    .main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    .spinner { display: none; text-align: center; padding: 3rem 0; color: #60a5fa; }
+    .spinner.active { display: block; }
+    .spinner-ring {
+      display: inline-block;
+      width: 40px; height: 40px;
+      border: 3px solid rgba(96,165,250,0.2);
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 0.75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-box {
+      display: none;
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      color: #fca5a5;
+      margin-top: 1.5rem;
+    }
+    .error-box.active { display: block; }
+
+    #results { display: none; margin-top: 1.5rem; }
+    #results.active { display: block; }
+
+    .raw-metar {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .raw-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 0.35rem;
+    }
+    .raw-text {
+      font-family: "Courier New", monospace;
+      font-size: 0.92rem;
+      color: #86efac;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+
+    .summary-card {
+      background: linear-gradient(135deg, #1e3a5f 0%, #1e3356 100%);
+      border: 1px solid rgba(37,99,235,0.25);
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .summary-station {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #60a5fa;
+      letter-spacing: 0.1em;
+      font-family: "Courier New", monospace;
+    }
+    .summary-time { font-size: 0.85rem; color: #94a3b8; margin-top: 0.2rem; margin-bottom: 1rem; }
+    .summary-text { font-size: 1.15rem; line-height: 1.7; color: #e2e8f0; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.9rem;
+    }
+    .detail-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .detail-card:hover { border-color: rgba(37,99,235,0.4); transform: translateY(-2px); }
+    .detail-icon  { font-size: 1.4rem; margin-bottom: 0.4rem; }
+    .detail-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6b7280; margin-bottom: 0.2rem; }
+    .detail-value { font-size: 0.97rem; color: #e2e8f0; font-weight: 500; line-height: 1.4; }
+
+    footer { text-align: center; color: #374151; font-size: 0.78rem; padding-bottom: 2rem; }
+    footer a { color: #4b5563; }
+  </style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="hero-plane">&#9992;</span>
+  <h1>METAR Reader</h1>
+  <p>Real-time airport weather decoded into plain English</p>
+
+  <div class="search-wrap">
+    <input id="airport-input" type="text" maxlength="4"
+           placeholder="Airport code, e.g. KJFK" autocomplete="off" />
+    <button id="search-btn" onclick="fetchWeather()">Get Weather</button>
+  </div>
+
+  <div class="examples">
+    Try:
+    <span onclick="quickSearch('KJFK')">KJFK</span>
+    <span onclick="quickSearch('EGLL')">EGLL</span>
+    <span onclick="quickSearch('KLAX')">KLAX</span>
+    <span onclick="quickSearch('EIDW')">EIDW</span>
+    <span onclick="quickSearch('KHIO')">KHIO</span>
+  </div>
+</header>
+
+<main class="main">
+  <div class="spinner" id="spinner">
+    <div class="spinner-ring"></div>
+    <div>Fetching weather data&hellip;</div>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <div id="results">
+    <div class="raw-metar">
+      <div class="raw-label">Raw METAR</div>
+      <div class="raw-text" id="raw-text"></div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-station" id="summary-station"></div>
+      <div class="summary-time"    id="summary-time"></div>
+      <div class="summary-text"    id="summary-text"></div>
+    </div>
+
+    <div class="detail-grid" id="detail-grid"></div>
+  </div>
+</main>
+
+<footer>Data sourced from <a href="https://aviationweather.gov">aviationweather.gov</a></footer>
+
+<script>
+  const ICONS = {
+    wind:        "&#128168;",
+    visibility:  "&#128065;",
+    weather:     "&#127783;",
+    sky:         "&#9729;",
+    temperature: "&#127777;",
+    dew_point:   "&#128167;",
+    humidity:    "&#128166;",
+    pressure:    "&#128200;",
+    note:        "&#8505;",
+  };
+  const LABELS = {
+    wind:        "Wind",
+    visibility:  "Visibility",
+    weather:     "Precipitation / Weather",
+    sky:         "Sky Condition",
+    temperature: "Temperature",
+    dew_point:   "Dew Point",
+    humidity:    "Relative Humidity",
+    pressure:    "Altimeter / Pressure",
+    note:        "Station Note",
+  };
+  const ORDER = ["sky", "weather", "temperature", "dew_point", "humidity", "wind", "visibility", "pressure", "note"];
+
+  function quickSearch(code) {
+    document.getElementById("airport-input").value = code;
+    fetchWeather();
+  }
+
+  document.getElementById("airport-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") fetchWeather();
+  });
+
+  async function fetchWeather() {
+    const code = document.getElementById("airport-input").value.trim().toUpperCase();
+    if (!code) return;
+
+    setLoading(true);
+    hideError();
+    hideResults();
+
+    try {
+      const resp = await fetch("/weather?airport=" + encodeURIComponent(code));
+      const data = await resp.json();
+      if (data.error) {
+        showError(data.error);
+      } else {
+        renderResults(data);
+      }
+    } catch (err) {
+      showError("Network error — please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderResults(data) {
+    document.getElementById("raw-text").textContent       = data.raw || "";
+    document.getElementById("summary-station").textContent = data.station || "";
+    document.getElementById("summary-time").textContent   =
+      data.components && data.components.time ? "Observation at " + data.components.time : "";
+    document.getElementById("summary-text").textContent   = data.summary || "";
+
+    const grid = document.getElementById("detail-grid");
+    grid.innerHTML = "";
+
+    ORDER.forEach(function(key) {
+      var value = data.components && data.components[key];
+      if (!value) return;
+
+      var card = document.createElement("div");
+      card.className = "detail-card";
+      card.innerHTML =
+        '<div class="detail-icon">'  + (ICONS[key]  || "&#128203;") + '</div>' +
+        '<div class="detail-label">' + (LABELS[key] || key)         + '</div>' +
+        '<div class="detail-value">' + esc(value)                   + '</div>';
+      grid.appendChild(card);
+    });
+
+    document.getElementById("results").classList.add("active");
+  }
+
+  function esc(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+  function setLoading(on) {
+    document.getElementById("spinner").classList.toggle("active", on);
+    var btn = document.getElementById("search-btn");
+    btn.disabled    = on;
+    btn.textContent = on ? "Loading…" : "Get Weather";
+  }
+  function showError(msg) {
+    var el = document.getElementById("error-box");
+    el.textContent = msg;
+    el.classList.add("active");
+  }
+  function hideError()   { document.getElementById("error-box").classList.remove("active"); }
+  function hideResults() { document.getElementById("results").classList.remove("active"); }
+</script>
+</body>
+</html>
